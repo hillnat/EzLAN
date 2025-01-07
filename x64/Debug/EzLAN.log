@@ -1,0 +1,7 @@
+﻿  pch.cpp
+  dllmain.cpp
+  NetworkingMain.cpp
+C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(261,72): warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
+  Generating Code...
+     Creating library C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.lib and object C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.exp
+  EzLAN.vcxproj -> C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.dll
