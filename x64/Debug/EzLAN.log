@@ -1,3 +1,2 @@
 ﻿  NetworkingMain.cpp
-C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(258,72): warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
   EzLAN.vcxproj -> C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.dll
