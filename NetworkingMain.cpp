@@ -33,10 +33,10 @@ __declspec(dllexport) vec3 trackedVector = vec3{ 0.F,0.F,0.F };
 
 // Function prototypes for the functions to be exposed
 extern "C" {
-    __declspec(dllexport) void SetupServer();
-    __declspec(dllexport) void SetupClient();
-    __declspec(dllexport) void CloseServer();
-    __declspec(dllexport) void CloseClient();
+    __declspec(dllexport) void __stdcall SetupServer();
+    __declspec(dllexport) void __stdcall SetupClient();
+    __declspec(dllexport) void __stdcall CloseServer();
+    __declspec(dllexport) void __stdcall CloseClient();
 }
 
 bool alive = true;
@@ -147,7 +147,7 @@ void SetupServer() {
 
     thread(&ServerWaitNewClients).detach();//Thread for accepting new clients
     thread(&ServerTick).detach();//Thread for sending out server info
-    while (alive) {}
+    //while (alive) {}
     cout << "SetupServer() exiting" << endl;
 }
 void CloseServer() {
@@ -159,13 +159,9 @@ void ClientTick() {
     cout << "ClientTick() called" << endl;
     while (netAuth == NetAuthority::Client) {
         //Send stuff
-    //send(clientSocket, message.c_str(), message.length(), 0);//Send to server
+        //send(clientSocket, message.c_str(), message.length(), 0);//Send to server
 
-    //Recieve stuff
-    //If we recieved, print to console
-
-
-
+        //Recieve stuff
         char recvBuffer[1024];
         int bytesRead = recv(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
         if (bytesRead > 0) {
@@ -215,6 +211,7 @@ void ClientTick() {
             }
 
             //cout<<"[ClientTick] : Received : " + string(recvBuffer)<<endl;
+            trackedVector = newVec;
             cout << "[ClientTick] : Built Vec3 : X" << newVec.x << " Y" << newVec.y << " Z" << newVec.z << endl;
         }
     }
@@ -265,7 +262,7 @@ void SetupClient() {
     //}
     thread t = thread(&ClientTick);
     t.detach();
-    while (alive) {}
+    //while (alive) {}
     cout << "SetupClient() exiting" << endl;
 }
 void CloseClient() {
