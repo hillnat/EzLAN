@@ -16,10 +16,16 @@
 #include <ws2tcpip.h> //Contains additional functions for TCP/IP networking, for InetPtonW and other functions
 #pragma comment(lib, "ws2_32.lib") //Links against the Winsock library
 #include <thread>
+#include <vector>
 using namespace std;
 struct vec3 { float x = 0.F; float y = 0.F; float z = 0.F; };
-enum axes { x, y, z };
+enum axes {id, x, y, z };
 enum netAuthority { Offline, Server, Client };
+enum logs { ServerStarted, ServerEnded, ClientConnected,ClientStarted,ClientEnded,IdSet };
+struct syncedVec3 { int id; float x; float y; float z; };//Datatype for vector including ID
+struct spawnRequest { int id; };//Datatype for vector including ID
+vector<syncedVec3> vecsToSend;//To send out to other sockets
+vector<syncedVec3> vecsToProcess;//To be processed in unity
 
 vector<SOCKET> clientArray;
 WSADATA wsaData;
@@ -27,10 +33,13 @@ SOCKET serverSocket;
 SOCKET clientSocket;
 sockaddr_in clientAddr;
 sockaddr_in serverAddr;
-
+int myId = -1;
+thread waitForClientsThread;
 
 vec3 trackedVector = vec3{ 0.F,0.F,0.F };
-__declspec(dllexport) netAuthority netAuth = netAuthority::Offline;
+netAuthority netAuth = netAuthority::Offline;
+
+vector<int> logsList;
 
 // Function prototypes for the functions to be exposed
 extern "C" {
@@ -43,17 +52,171 @@ extern "C" {
     __declspec(dllexport) float __stdcall GetTrackedVectorX();
     __declspec(dllexport) float __stdcall GetTrackedVectorY();
     __declspec(dllexport) float __stdcall GetTrackedVectorZ();
+    __declspec(dllexport) void __stdcall SetTrackedVector(float x, float y, float z);
     __declspec(dllexport) int __stdcall GetNetAuthority();
+    __declspec(dllexport) int __stdcall GetClientCount();
+    __declspec(dllexport) int __stdcall HasLog();
+    __declspec(dllexport) int __stdcall GetNextLog();
+    __declspec(dllexport) int __stdcall GetId();
 }
 
 float GetTrackedVectorX() { return trackedVector.x; }
 float GetTrackedVectorY() { return trackedVector.y; }
 float GetTrackedVectorZ() { return trackedVector.z; }
+void SetTrackedVector(float x, float y, float z) { trackedVector = vec3{ x,y,z }; }
 int GetNetAuthority() { return (int)netAuth; }
+int GetClientCount() { return (int)clientArray.size(); }
+void CloseClientArray() {
+    if (netAuth != netAuthority::Server) {
+        return;
+    }
+    for (int i = 0; i < clientArray.size(); i++) {
+        closesocket(clientArray[i]);
+    }
+    clientArray.clear();
+}
+int GetNextLog() {
+    int c = logsList[0];
+    logsList.erase(logsList.begin());
+    return c;
+}
+int HasLog() {
+    if (logsList.size() > 0) {
+        return 0;
+    }
+    else {
+        return 1;
+    }
+}
 
+int GetId() {
+    return myId;
+}
+//Used by both client and server, to add a vector that they want to be synced to a list of vectors to send
+void SyncVec3(int id, float x, float y, float z) { vecsToSend.push_back(syncedVec3{ id,x,y,z }); }
+
+
+
+syncedVec3 EvaluateData(const string data) {
+    syncedVec3 output = syncedVec3{ 0, 0.f,0.f,0.f };
+    string curNum = "";
+    axes axis = (axes)0;
+    bool done = false;
+    for (int i = 0; i < data.length(); i++) {
+        if (done) { break; }
+        switch ((char)(data[i]))
+        {
+        case 'i':
+            axis = axes::id;
+            curNum = "";
+            break;
+        case 'x':
+            axis = axes::x;
+            curNum = "";
+            break;
+        case 'y':
+            axis = axes::y;
+            curNum = "";
+            break;
+        case 'z':
+            axis = axes::z;
+            curNum = "";
+            break;
+        case '?'://End of number. When we reach this, apply the number weve constructed to our vec3
+            switch (axis)
+            {
+            case(axes::x):
+                output.x = stof(curNum);
+                break;
+            case(axes::y):
+                output.y = stof(curNum);
+                break;
+            case(axes::z):
+                output.z = stof(curNum);
+                break;
+            case(axes::id):
+                output.z = stof(curNum);
+                break;
+            };
+            break;
+        case ';'://End of message
+            done = true;
+            break;
+        default://If the char can be parsed to an int, add it to whichever axis we are currently working
+            curNum += data[i];
+            break;
+        };
+
+    }
+
+    //std::cout<<"[ClientTick] : Received : " + string(recvBuffer)<<endl;
+    return output;
+}
+string CreateDataFromSyncedVec(syncedVec3 vec) {
+    string message = "i";
+    message += vec.id;
+    message += "x";
+    message += std::to_string(vec.x);
+    message += "?";//END OF NUM
+
+    message += "y";
+    message += std::to_string(vec.y);
+    message += "?";//END OF NUM
+
+    message += "z";
+    message += std::to_string(vec.z);
+    message += "?";//END OF NUM
+
+    message += ";";//END MESSAGE
+    return message;
+}
+
+/*void ServersideClientRepeater() {//When we recieve anything, send it back out to all clients
+    //Log("ServerClientListener started", FOREGROUND_GREEN);
+
+    //Log("ServerClientListener started #" + to_string(clientArray.size()), FOREGROUND_GREEN);
+
+    while (netAuth==netAuthority::Server) {//Wait to recieve message
+        char buffer[1024];
+        int bytesRead = recv(serverSocket, buffer, sizeof(buffer), 0);
+        //buffer[bytesRead] = '\0';
+        // Broadcast the message to all other clients
+        for (int i = 0;i < clientArray.size(); i++) {
+            cout << "Broadcasting message to client #" << i << endl;
+            send(clientArray[i], buffer, bytesRead, 0);
+        }
+    }
+    // Remove client from list and close socket
+    //closesocket(clientSocket);
+    //clientArray.erase(remove(clientArray.begin(), clientArray.end(), clientSocket), clientArray.end());
+}*/
+
+void ServerWaitNewClients() {//Continously wait for new connections
+    while (true) {
+        int clientAddrLen = sizeof(clientAddr);
+        clientSocket = accept(serverSocket, (sockaddr*)&clientAddr, &clientAddrLen);
+        if (clientSocket == INVALID_SOCKET) {
+            //return 1;//Failure
+            continue;
+        }
+        clientArray.push_back(clientSocket);
+        //Send the new client their ID
+        string message = to_string(clientArray.size());
+        const char* buff = message.c_str();
+        send(clientSocket, buff, sizeof(message), 0);//Send their id
+
+        logsList.push_back(logs::ClientConnected);
+    }
+    //thread t = thread(&ServerClientListener); //Run this method to enable a 2 way connection
+    //t.detach();
+}
 void SetupServer() {
-    std::cout << "SetupServer() called" << endl;
 
+    if (netAuth != netAuthority::Offline) {
+        return;
+    }
+    netAuth = netAuthority::Server;
+    CloseClientArray();
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         //Log("WSA Startup failed", FOREGROUND_RED);
         return;
@@ -86,47 +249,60 @@ void SetupServer() {
     }
     //Log("Server started, netAuth set to Server", FOREGROUND_GREEN);
 
-    netAuth = netAuthority::Server;
+    
 
-    //thread(&ServerWaitNewClients).detach();//Thread for accepting new clients
-    //thread(&ServerTick).detach();//Thread for sending out server info
-    std::cout << "SetupServer() exiting" << endl;
+    thread(&ServerWaitNewClients).detach();//Thread for accepting new clients
+    //thread(&ServersideClientRepeater).detach();//Thread for accepting new clients
+    logsList.push_back(logs::ServerStarted);
 }
 void ServerTick() {
-    std::cout << "ServerTick() called" << endl;
-    //Send out synced transforms
-    string message = "V";
-    vec3 testVector = vec3{ 1.1235F, 2.1233452F, 3.5234234F };
-    message += "x";
-    message += std::to_string(testVector.x);
-    message += "?";//END OF NUM
 
-    message += "y";
-    message += std::to_string(testVector.y);
-    message += "?";//END OF NUM
-
-    message += "z";
-    message += std::to_string(testVector.z);
-    message += "?";//END OF NUM
-
-    message += ";";//END MESSAGE
-    const char* buff = message.c_str();
-    for (int i = 0; i < clientArray.size(); i++) {
-        send(clientArray[i], buff, sizeof(message), 0);
+    if (netAuth != netAuthority::Server) {
+        return;
     }
-    trackedVector = testVector;
-    std::cout << ("[ServerTick] Sending message : " + message) << endl;
-    std::cout << "ServerTick() exiting" << endl;
+    //Send out all synced vectors
+    for (int i = 0; i < vecsToSend.size(); i++) {
+        string message = CreateDataFromSyncedVec(vecsToSend[i]);
+        const char* buff = message.c_str();
+        for (int i = 0; i < clientArray.size(); i++) {
+            send(clientArray[i], buff, sizeof(message), 0);
+        }
+    }
+    vecsToSend.clear();
+    //trackedVector = sendVector;
+    //Wait for incoming data to process
+    char recvBuffer[1024];
+    int bytesRead = recv(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
+    if (bytesRead > 0) {
+        //recvBuffer[bytesRead] = '\0';
+        string newData = string(recvBuffer);
+
+        //Broadcast anything we recieve back out to all clients, raw
+        for (int i = 0; i < clientArray.size(); i++) {
+            cout << "Broadcasting message to client #" << i << endl;
+            send(clientArray[i], recvBuffer, bytesRead, 0);
+        }
+
+        vecsToProcess.push_back(EvaluateData(newData));
+    }
 }
 void CloseServer() {
+    if (netAuth != netAuthority::Server) {
+        return;
+    }
     closesocket(serverSocket);
+    CloseClientArray();
     WSACleanup();
     netAuth = netAuthority::Offline;
+    logsList.push_back(logs::ClientStarted);
 }
 
-void SetupClient() {
-    std::cout << "SetupClient() called" << endl;
 
+void SetupClient() {
+
+    if (netAuth != netAuthority::Offline) {
+        return;
+    }
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         //Log("WSAStartup failed", FOREGROUND_RED);
         return;
@@ -135,6 +311,7 @@ void SetupClient() {
     clientSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (clientSocket == INVALID_SOCKET) {
         //Log("Socket creation failed", FOREGROUND_RED);
+        closesocket(clientSocket);
         WSACleanup();
         return;
     }
@@ -160,73 +337,56 @@ void SetupClient() {
 
     
     netAuth = netAuthority::Client;
+    //Wait until we recieve out ID
+    while(myId==-1) {
+        char recvBuffer[1024];
+        int bytesRead = recv(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
+        string newData = string(recvBuffer);
+
+        myId = stoi(newData);
+    }
+    logsList.push_back(logs::IdSet);
+
     //thread t = thread(&ClientTick);
     //t.detach();
     
-    std::cout << "SetupClient() exiting" << endl;
+    logsList.push_back(logs::ClientStarted);
+
 }
 void ClientTick() {
-    std::cout << "ClientTick() called" << endl;
+
+    if (netAuth != netAuthority::Client || myId==-1) {
+        return;
+    }
+    //Send out all vectors we want to get synced
+    for (int i = 0; i < vecsToSend.size(); i++) {
+        string message = CreateDataFromSyncedVec(vecsToSend[i]);
+        const char* buff = message.c_str();
+        for (int i = 0; i < clientArray.size(); i++) {
+            send(clientArray[i], buff, sizeof(message), 0);
+        }
+    }
+    vecsToSend.clear();
+
+    //Wait for incoming data to process
     char recvBuffer[1024];
     int bytesRead = recv(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
     if (bytesRead > 0) {
         //recvBuffer[bytesRead] = '\0';
         string newData = string(recvBuffer);
-        vec3 newVec = vec3{ 0.f,0.f,0.f };
-        string curNum = "";
-        axes axis = (axes)0;
-        bool done = false;
-        for (int i = 0; i < newData.length(); i++) {
-            if (done) { break; }
-            switch ((char)(newData[i]))
-            {
-            case 'x':
-                axis = axes::x;
-                curNum = "";
-                break;
-            case 'y':
-                axis = axes::y;
-                curNum = "";
-                break;
-            case 'z':
-                axis = axes::z;
-                curNum = "";
-                break;
-            case '?'://End of number. When we reach this, apply the number weve constructed to our vec3
-                switch (axis)
-                {
-                case(axes::x):
-                    newVec.x = stof(curNum);
-                    break;
-                case(axes::y):
-                    newVec.y = stof(curNum);
-                    break;
-                case(axes::z):
-                    newVec.z = stof(curNum);
-                    break;
-                };
-                break;
-            case ';'://End of message
-                done = true;
-                break;
-            default://If the char can be parsed to an int, add it to whichever axis we are currently working
-                curNum += newData[i];
-                break;
-            };
-        }
-
-        //std::cout<<"[ClientTick] : Received : " + string(recvBuffer)<<endl;
-        trackedVector = newVec;
-        std::cout << "[ClientTick] : Built Vec3 : X" << newVec.x << " Y" << newVec.y << " Z" << newVec.z << endl;
+        vecsToProcess.push_back(EvaluateData(newData));        
     }
-    std::cout << "ClientTick() exiting" << endl;
 }
 void CloseClient() {
 
     //Log("Closing client", FOREGROUND_BLUE);
+    if (netAuth != netAuthority::Client) {
+        return;
+    }
     closesocket(clientSocket);
     WSACleanup();
     netAuth = netAuthority::Offline;
+    logsList.push_back(logs::ClientEnded);
 }
 
 

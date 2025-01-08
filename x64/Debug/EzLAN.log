@@ -1,2 +1,6 @@
-﻿  NetworkingMain.cpp
+﻿  pch.cpp
+  dllmain.cpp
+  NetworkingMain.cpp
+  Generating Code...
+     Creating library C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.lib and object C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.exp
   EzLAN.vcxproj -> C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.dll
