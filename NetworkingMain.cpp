@@ -22,10 +22,10 @@ struct vec3 { float x = 0.F; float y = 0.F; float z = 0.F; };
 enum axes {id, x, y, z };
 enum netAuthority { Offline, Server, Client };
 enum logs { ServerStarted, ServerEnded, ClientConnected,ClientStarted,ClientEnded,IdSet };
-struct syncedVec3 { int id; float x; float y; float z; };//Datatype for vector including ID
+struct sVec3 { int id; float x; float y; float z; };//Datatype for vector including ID
 struct spawnRequest { int id; };//Datatype for vector including ID
-vector<syncedVec3> vecsToSend;//To send out to other sockets
-vector<syncedVec3> vecsToProcess;//To be processed in unity
+vector<sVec3> vecsToSend;//To send out to other sockets
+vector<sVec3> vecsToProcess;//To be processed in unity
 
 vector<SOCKET> clientArray;
 WSADATA wsaData;
@@ -36,7 +36,6 @@ sockaddr_in serverAddr;
 int myId = -1;
 thread waitForClientsThread;
 
-vec3 trackedVector = vec3{ 0.F,0.F,0.F };
 netAuthority netAuth = netAuthority::Offline;
 
 vector<int> logsList;
@@ -49,10 +48,6 @@ extern "C" {
     __declspec(dllexport) void __stdcall SetupClient();
     __declspec(dllexport) void __stdcall ClientTick();
     __declspec(dllexport) void __stdcall CloseClient();
-    __declspec(dllexport) float __stdcall GetTrackedVectorX();
-    __declspec(dllexport) float __stdcall GetTrackedVectorY();
-    __declspec(dllexport) float __stdcall GetTrackedVectorZ();
-    __declspec(dllexport) void __stdcall SetTrackedVector(float x, float y, float z);
     __declspec(dllexport) int __stdcall GetNetAuthority();
     __declspec(dllexport) int __stdcall GetClientCount();
     __declspec(dllexport) int __stdcall HasLog();
@@ -60,10 +55,7 @@ extern "C" {
     __declspec(dllexport) int __stdcall GetId();
 }
 
-float GetTrackedVectorX() { return trackedVector.x; }
-float GetTrackedVectorY() { return trackedVector.y; }
-float GetTrackedVectorZ() { return trackedVector.z; }
-void SetTrackedVector(float x, float y, float z) { trackedVector = vec3{ x,y,z }; }
+
 int GetNetAuthority() { return (int)netAuth; }
 int GetClientCount() { return (int)clientArray.size(); }
 void CloseClientArray() {
@@ -93,12 +85,16 @@ int GetId() {
     return myId;
 }
 //Used by both client and server, to add a vector that they want to be synced to a list of vectors to send
-void SyncVec3(int id, float x, float y, float z) { vecsToSend.push_back(syncedVec3{ id,x,y,z }); }
+void SyncVec3(int id, float x, float y, float z) { vecsToSend.push_back(sVec3{ id,x,y,z }); }
 
+sVec3 GetNextVecToProcess() {
+    sVec3 s = vecsToProcess[0];
+    vecsToProcess.erase(vecsToProcess.begin());
+    return s;
+}
 
-
-syncedVec3 EvaluateData(const string data) {
-    syncedVec3 output = syncedVec3{ 0, 0.f,0.f,0.f };
+sVec3 MakeSVecFromData(const string data) {
+    sVec3 output = sVec3{ 0, 0.f,0.f,0.f };
     string curNum = "";
     axes axis = (axes)0;
     bool done = false;
@@ -152,7 +148,7 @@ syncedVec3 EvaluateData(const string data) {
     //std::cout<<"[ClientTick] : Received : " + string(recvBuffer)<<endl;
     return output;
 }
-string CreateDataFromSyncedVec(syncedVec3 vec) {
+string MakeDataFromSVec(sVec3 vec) {
     string message = "i";
     message += vec.id;
     message += "x";
@@ -171,25 +167,6 @@ string CreateDataFromSyncedVec(syncedVec3 vec) {
     return message;
 }
 
-/*void ServersideClientRepeater() {//When we recieve anything, send it back out to all clients
-    //Log("ServerClientListener started", FOREGROUND_GREEN);
-
-    //Log("ServerClientListener started #" + to_string(clientArray.size()), FOREGROUND_GREEN);
-
-    while (netAuth==netAuthority::Server) {//Wait to recieve message
-        char buffer[1024];
-        int bytesRead = recv(serverSocket, buffer, sizeof(buffer), 0);
-        //buffer[bytesRead] = '\0';
-        // Broadcast the message to all other clients
-        for (int i = 0;i < clientArray.size(); i++) {
-            cout << "Broadcasting message to client #" << i << endl;
-            send(clientArray[i], buffer, bytesRead, 0);
-        }
-    }
-    // Remove client from list and close socket
-    //closesocket(clientSocket);
-    //clientArray.erase(remove(clientArray.begin(), clientArray.end(), clientSocket), clientArray.end());
-}*/
 
 void ServerWaitNewClients() {//Continously wait for new connections
     while (true) {
@@ -262,7 +239,7 @@ void ServerTick() {
     }
     //Send out all synced vectors
     for (int i = 0; i < vecsToSend.size(); i++) {
-        string message = CreateDataFromSyncedVec(vecsToSend[i]);
+        string message = MakeDataFromSVec(vecsToSend[i]);
         const char* buff = message.c_str();
         for (int i = 0; i < clientArray.size(); i++) {
             send(clientArray[i], buff, sizeof(message), 0);
@@ -283,7 +260,7 @@ void ServerTick() {
             send(clientArray[i], recvBuffer, bytesRead, 0);
         }
 
-        vecsToProcess.push_back(EvaluateData(newData));
+        vecsToProcess.push_back(MakeSVecFromData(newData));
     }
 }
 void CloseServer() {
@@ -360,7 +337,7 @@ void ClientTick() {
     }
     //Send out all vectors we want to get synced
     for (int i = 0; i < vecsToSend.size(); i++) {
-        string message = CreateDataFromSyncedVec(vecsToSend[i]);
+        string message = MakeDataFromSVec(vecsToSend[i]);
         const char* buff = message.c_str();
         for (int i = 0; i < clientArray.size(); i++) {
             send(clientArray[i], buff, sizeof(message), 0);
@@ -374,7 +351,7 @@ void ClientTick() {
     if (bytesRead > 0) {
         //recvBuffer[bytesRead] = '\0';
         string newData = string(recvBuffer);
-        vecsToProcess.push_back(EvaluateData(newData));        
+        vecsToProcess.push_back(MakeSVecFromData(newData));        
     }
 }
 void CloseClient() {
