@@ -1,6 +1,4 @@
-﻿  pch.cpp
-  dllmain.cpp
-  NetworkingMain.cpp
-  Generating Code...
-     Creating library C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.lib and object C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.exp
+﻿  NetworkingMain.cpp
+C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(25,74): warning C4091: '__declspec(dllexport)': ignored on left of 'sVec3' when no variable is declared
+C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(99,52): warning C4267: 'return': conversion from 'size_t' to 'int', possible loss of data
   EzLAN.vcxproj -> C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.dll

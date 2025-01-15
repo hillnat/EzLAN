@@ -37,15 +37,15 @@ namespace NetworkingMain
 
 
 	//Server
-	int ServerWaitNewClients();
-	void SetupServer();
-	void CloseServer();
-	void ServerTick();
+	int intern_ServerWaitNewClients();
+	void extern_SetupServer();
+	void extern_CloseServer();
+	void extern_ServerTick();
 	void ServerClientListener();
 
 	//Client
-	void ClientTick();
-	void SetupClient();
-	void CloseClient();
+	void extern_ClientTick();
+	void extern_SetupClient();
+	void extern_CloseClient();
 	//void EvaluateIncomingMessage();
 };*/
