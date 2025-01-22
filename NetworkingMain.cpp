@@ -17,7 +17,7 @@
 #pragma comment(lib, "ws2_32.lib") //Links against the Winsock library
 #include <thread>
 #include <vector>
-#define EZLAN_PORT 7777
+#define SERVERPORT 7777
 using namespace std;
 enum axes {id, x, y, z };
 enum netAuthority { Offline, Server, Client };
@@ -26,15 +26,14 @@ __declspec(dllexport) struct sVec3 { int id; float x; float y; float z; };//Data
 struct spawnRequest { int id; };//Datatype for vector including ID
 struct vec3 { float x = 0.F; float y = 0.F; float z = 0.F; };
 
-PCWSTR SERVERIP = L"127.0.0.1";
+PCWSTR SERVERIP = L"10.15.20.7";
 
 vector<sVec3> vecsToSend;//To send out to other sockets
 vector<sVec3> vecsToProcess;//To be processed in unity
 
 vector<SOCKET> clientArray;
 WSADATA wsaData;
-SOCKET serverSocket;
-SOCKET clientSocket;
+SOCKET mySocket;
 sockaddr_in clientAddr;
 sockaddr_in serverAddr;
 int myId = -1;
@@ -46,10 +45,8 @@ vector<int> logsList;
 
 extern "C" {
 	__declspec(dllexport) void __stdcall extern_SetupServer();
-	__declspec(dllexport) void __stdcall extern_ServerTick();
 	__declspec(dllexport) void __stdcall extern_CloseServer();
 	__declspec(dllexport) void __stdcall extern_SetupClient();
-	__declspec(dllexport) void __stdcall extern_ClientTick();
 	__declspec(dllexport) void __stdcall extern_CloseClient();
 	__declspec(dllexport) int __stdcall extern_GetNetAuthority();
 	__declspec(dllexport) int __stdcall extern_GetClientCount();
@@ -100,7 +97,7 @@ sVec3 extern_GetNextVecToProcess() {
 }
 int extern_HasVecToProcess() { return vecsToProcess.size(); }
 
-
+#pragma region Data Processing
 sVec3 intern_MakeSVecFromData(const string data) {
 	sVec3 output = sVec3{ 0, 0.f,0.f,0.f };
 	string curNum = "";
@@ -174,9 +171,11 @@ string intern_MakeDataFromSVec(sVec3 vec) {
 	message += ";";//END MESSAGE
 	return message;
 }
-
 void intern_SendAllVecs() {
 	//Send out all synced vectors
+	if (vecsToSend.size() == 0) {
+		return;
+	}
 	for (int i = 0; i < vecsToSend.size(); i++) {
 		string message = intern_MakeDataFromSVec(vecsToSend[i]);
 		const char* buff = message.c_str();
@@ -186,28 +185,63 @@ void intern_SendAllVecs() {
 	}
 	vecsToSend.clear();
 }
+#pragma endregion
+#pragma region Server
+//Thread running this exists once per client on the server machine
+void intern_ServerRecvThread() {
+	//Wait for incoming data to process
+	while (true) {
+		char recvBuffer[1024];
+		int bytesRead = recv(mySocket, recvBuffer, sizeof(recvBuffer), 0);
+		if (bytesRead > 0) {
+			//recvBuffer[bytesRead] = '\0';
+			string newData = string(recvBuffer);
+			/*
+			//Broadcast anything we recieve back out to all clients, raw
+			for (int i = 0; i < clientArray.size(); i++) {
+				//cout << "Broadcasting message to client #" << i << endl;
+				send(clientArray[i], recvBuffer, bytesRead, 0);
+			}*/
+
+			vecsToProcess.push_back(intern_MakeSVecFromData(newData));
+		}
+	}
+}
 
 void intern_ServerWaitNewClients() {//Continously wait for new connections
 	while (true) {
 		int clientAddrLen = sizeof(clientAddr);
-		clientSocket = accept(serverSocket, (sockaddr*)&clientAddr, &clientAddrLen);
-		if (clientSocket == INVALID_SOCKET) {
+		SOCKET newSocket = accept(mySocket, (sockaddr*)&clientAddr, &clientAddrLen);
+		if (newSocket == INVALID_SOCKET) {
 			//return 1;//Failure
 			continue;
 		}
-		clientArray.push_back(clientSocket);
+		clientArray.push_back(newSocket);
 		//Send the new client their ID
 		string message = to_string(clientArray.size());
 		const char* buff = message.c_str();
-		send(clientSocket, buff, sizeof(message), 0);//Send their id
+		send(newSocket, buff, sizeof(message), 0);//Send their id
 
 		logsList.push_back(logs::ClientConnected);
+		//thread(&intern_ServerRecvThread, clientArray.size() - 1).detach();
 	}
-	//thread t = thread(&ServerClientListener); //Run this method to enable a 2 way connection
-	//t.detach();
+}
+void intern_ServerSendThread() {
+	while (true) {
+		intern_SendAllVecs();
+	}
 }
 
-
+void extern_CloseServer() {
+	if (netAuth != netAuthority::Server) {
+		return;
+	}
+	closesocket(mySocket);
+	intern_CloseClientArray();
+	WSACleanup();
+	netAuth = netAuthority::Offline;
+	logsList.push_back(logs::ClientStarted);
+}
 void extern_SetupServer() {
 
 	if (netAuth != netAuthority::Offline) {
@@ -220,8 +254,8 @@ void extern_SetupServer() {
 		return;
 	}
 
-	serverSocket = socket(AF_INET, SOCK_STREAM, 0);
-	if (serverSocket == INVALID_SOCKET) {
+	mySocket = socket(AF_INET, SOCK_STREAM, 0);
+	if (mySocket == INVALID_SOCKET) {
 		//Log("Socket creation failed", FOREGROUND_RED);
 		WSACleanup();
 		logsList.push_back(logs::FATAL1);
@@ -230,20 +264,20 @@ void extern_SetupServer() {
 
 	serverAddr.sin_family = AF_INET;
 	serverAddr.sin_addr.s_addr = INADDR_ANY;
-	serverAddr.sin_port = htons(EZLAN_PORT);
+	serverAddr.sin_port = htons(SERVERPORT);
 
-	if (bind(serverSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+	if (bind(mySocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
 		//Log("Bind failed", FOREGROUND_RED);
 
-		closesocket(serverSocket);
+		closesocket(mySocket);
 		WSACleanup();
 		logsList.push_back(logs::FATAL2);
 		return;
 	}
 
-	if (listen(serverSocket, 5) == SOCKET_ERROR) {
+	if (listen(mySocket, 5) == SOCKET_ERROR) {
 		//Log("Listen failed", FOREGROUND_RED);
-		closesocket(serverSocket);
+		closesocket(mySocket);
 		WSACleanup();
 		logsList.push_back(logs::FATAL3);
 		return;
@@ -254,41 +288,40 @@ void extern_SetupServer() {
 	myId = 9999;
 
 	thread(&intern_ServerWaitNewClients).detach();//Thread for accepting new clients
-	//thread(&ServersideClientRepeater).detach();//Thread for accepting new clients
+	thread(&intern_ServerSendThread).detach();
+	thread(&intern_ServerRecvThread).detach();
 	logsList.push_back(logs::ServerStarted);
 }
-void extern_ServerTick() {
-
-	if (netAuth != netAuthority::Server) { return; }
-	intern_SendAllVecs();
-	//Wait for incoming data to process
-	char recvBuffer[1024];
-	int bytesRead = recv(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
-	if (bytesRead > 0) {
-		//recvBuffer[bytesRead] = '\0';
-		string newData = string(recvBuffer);
-
-		//Broadcast anything we recieve back out to all clients, raw
-		for (int i = 0; i < clientArray.size(); i++) {
-			//cout << "Broadcasting message to client #" << i << endl;
-			send(clientArray[i], recvBuffer, bytesRead, 0);
+#pragma endregion
+#pragma region Client
+void intern_ClientRecvThread() {
+	while (true) {
+		//Wait for incoming data to process
+		char recvBuffer[1024];
+		int bytesRead = recv(mySocket, recvBuffer, sizeof(recvBuffer), 0);
+		if (bytesRead > 0) {
+			//recvBuffer[bytesRead] = '\0';
+			string newData = string(recvBuffer);
+			vecsToProcess.push_back(intern_MakeSVecFromData(newData));
 		}
-
-		vecsToProcess.push_back(intern_MakeSVecFromData(newData));
+	}	
+}
+void intern_ClientSendThread() {
+	while (true) {
+		intern_SendAllVecs();
 	}
 }
-void extern_CloseServer() {
-	if (netAuth != netAuthority::Server) {
+void extern_CloseClient() {
+
+	//Log("Closing client", FOREGROUND_BLUE);
+	if (netAuth != netAuthority::Client) {
 		return;
 	}
-	closesocket(serverSocket);
-	intern_CloseClientArray();
+	closesocket(mySocket);
 	WSACleanup();
 	netAuth = netAuthority::Offline;
-	logsList.push_back(logs::ClientStarted);
+	logsList.push_back(logs::ClientEnded);
 }
-
-
 void extern_SetupClient() {
 
 	if (netAuth != netAuthority::Offline) {
@@ -300,9 +333,9 @@ void extern_SetupClient() {
 		return;
 	}
 
-	clientSocket = socket(AF_INET, SOCK_STREAM, 0);
-	if (clientSocket == INVALID_SOCKET) {
-		closesocket(clientSocket);
+	mySocket = socket(AF_INET, SOCK_STREAM, 0);
+	if (mySocket == INVALID_SOCKET) {
+		closesocket(mySocket);
 		WSACleanup();
 		logsList.push_back(logs::FATAL1);
 
@@ -310,23 +343,23 @@ void extern_SetupClient() {
 	}
 	serverAddr.sin_family = AF_INET;
 	serverAddr.sin_addr.s_addr = INADDR_ANY;
-	serverAddr.sin_port = htons(EZLAN_PORT);
+	serverAddr.sin_port = htons(SERVERPORT);
 
 
 	//serverAddr.sin_family = AF_INET;
-	//serverAddr.sin_port = htons(EZLAN_PORT);
+	//serverAddr.sin_port = htons(SERVERPORT);
 
 	//Convert IP address to wide string and use InetPtonW
 	if (InetPtonW(AF_INET, SERVERIP, &serverAddr.sin_addr) != 1) {
-		closesocket(clientSocket);
+		closesocket(mySocket);
 		WSACleanup();
 		logsList.push_back(logs::FATAL2);
 
 		return;
 	}
 
-	if (connect(clientSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
-		closesocket(clientSocket);
+	if (connect(mySocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+		closesocket(mySocket);
 		WSACleanup();
 		logsList.push_back(logs::FATAL3);
 
@@ -334,51 +367,26 @@ void extern_SetupClient() {
 	}
 
 
-	
+
 	//Wait until we recieve our ID
-	/*while(myId==-1) {
+	while (myId == -1) {
 		char recvBuffer[1024];
-		int bytesRead = recv(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
+		int bytesRead = recv(mySocket, recvBuffer, sizeof(recvBuffer), 0);
 		string newData = string(recvBuffer);
 
 		myId = stoi(newData);
-	}*/
+	}
 	netAuth = netAuthority::Client;
-	myId = 2222;
 	logsList.push_back(logs::IdSet);
 
 	//thread t = thread(&extern_ClientTick);
 	//t.detach();
-	
+
+
+	thread(&intern_ClientRecvThread).detach();//Thread for accepting new clients
+	thread(&intern_ClientSendThread).detach();//Thread for accepting new clients
+
 	logsList.push_back(logs::ClientStarted);
 
 }
-void extern_ClientTick() {
-
-	if (netAuth != netAuthority::Client || myId==-1) {
-		return;
-	}
-	intern_SendAllVecs();
-
-	//Wait for incoming data to process
-	char recvBuffer[1024];
-	int bytesRead = recv(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
-	if (bytesRead > 0) {
-		//recvBuffer[bytesRead] = '\0';
-		string newData = string(recvBuffer);
-		vecsToProcess.push_back(intern_MakeSVecFromData(newData));        
-	}
-}
-void extern_CloseClient() {
-
-	//Log("Closing client", FOREGROUND_BLUE);
-	if (netAuth != netAuthority::Client) {
-		return;
-	}
-	closesocket(clientSocket);
-	WSACleanup();
-	netAuth = netAuthority::Offline;
-	logsList.push_back(logs::ClientEnded);
-}
-
-
+#pragma endregion
