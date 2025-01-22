@@ -1,4 +1,4 @@
 ﻿  NetworkingMain.cpp
 C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(25,74): warning C4091: '__declspec(dllexport)': ignored on left of 'sVec3' when no variable is declared
-C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(99,52): warning C4267: 'return': conversion from 'size_t' to 'int', possible loss of data
+C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(101,59): warning C4267: 'return': conversion from 'size_t' to 'int', possible loss of data
   EzLAN.vcxproj -> C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.dll
