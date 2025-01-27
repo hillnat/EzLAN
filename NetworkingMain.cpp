@@ -17,6 +17,7 @@
 #pragma comment(lib, "ws2_32.lib") //Links against the Winsock library
 #include <thread>
 #include <vector>
+#include "NetworkingMain.h"
 #define SERVERPORT 7777
 using namespace std;
 enum axes {id, x, y, z };
@@ -136,7 +137,7 @@ sVec3 intern_MakeSVecFromData(const string data) {
 				output.z = stof(curNum);
 				break;
 			case(axes::id):
-				output.z = stof(curNum);
+				output.id = stoi(curNum);
 				break;
 			};
 			break;
@@ -171,28 +172,16 @@ string intern_MakeDataFromSVec(sVec3 vec) {
 	message += ";";//END MESSAGE
 	return message;
 }
-void intern_SendAllVecs() {
-	//Send out all synced vectors
-	if (vecsToSend.size() == 0) {
-		return;
-	}
-	for (int i = 0; i < vecsToSend.size(); i++) {
-		string message = intern_MakeDataFromSVec(vecsToSend[i]);
-		const char* buff = message.c_str();
-		for (int i = 0; i < clientArray.size(); i++) {
-			send(clientArray[i], buff, sizeof(message), 0);
-		}
-	}
-	vecsToSend.clear();
-}
+
 #pragma endregion
 #pragma region Server
 //Thread running this exists once per client on the server machine
-void intern_ServerRecvThread() {
+void intern_ServerRx(const int clientIndex) {
 	//Wait for incoming data to process
 	while (true) {
+		if (clientArray.size() <= clientIndex) { return; }
 		char recvBuffer[1024];
-		int bytesRead = recv(mySocket, recvBuffer, sizeof(recvBuffer), 0);
+		int bytesRead = recv(clientArray[clientIndex], recvBuffer, sizeof(recvBuffer), 0);
 		if (bytesRead > 0) {
 			//recvBuffer[bytesRead] = '\0';
 			string newData = string(recvBuffer);
@@ -223,12 +212,23 @@ void intern_ServerWaitNewClients() {//Continously wait for new connections
 		send(newSocket, buff, sizeof(message), 0);//Send their id
 
 		logsList.push_back(logs::ClientConnected);
-		//thread(&intern_ServerRecvThread, clientArray.size() - 1).detach();
+		thread(&intern_ServerRx, clientArray.size() - 1).detach();
 	}
 }
-void intern_ServerSendThread() {
+void intern_ServerTx() {
 	while (true) {
-		intern_SendAllVecs();
+		//Send out all synced vectors
+		if (vecsToSend.size() == 0) {
+			continue;
+		}
+		for (int i = 0; i < vecsToSend.size(); i++) {
+			string message = intern_MakeDataFromSVec(vecsToSend[i]);
+			const char* buff = message.c_str();
+			for (int i = 0; i < clientArray.size(); i++) {
+				send(clientArray[i], buff, sizeof(message), 0);
+			}
+		}
+		vecsToSend.clear();
 	}
 }
 
@@ -285,16 +285,16 @@ void extern_SetupServer() {
 	//Log("Server started, netAuth set to Server", FOREGROUND_GREEN);
 
 	netAuth = netAuthority::Server;
-	myId = 9999;
+	myId = 13;
 
 	thread(&intern_ServerWaitNewClients).detach();//Thread for accepting new clients
-	thread(&intern_ServerSendThread).detach();
-	thread(&intern_ServerRecvThread).detach();
+	thread(&intern_ServerTx).detach();
+	//thread(&intern_ServerRx).detach();
 	logsList.push_back(logs::ServerStarted);
 }
 #pragma endregion
 #pragma region Client
-void intern_ClientRecvThread() {
+void intern_ClientRx() {
 	while (true) {
 		//Wait for incoming data to process
 		char recvBuffer[1024];
@@ -306,9 +306,21 @@ void intern_ClientRecvThread() {
 		}
 	}	
 }
-void intern_ClientSendThread() {
+void intern_ClientTx() {
 	while (true) {
-		intern_SendAllVecs();
+		while (true) {
+			//Send out all synced vectors
+			if (vecsToSend.size() == 0) {
+				continue;
+			}
+			for (int i = 0; i < vecsToSend.size(); i++) {
+				string message = intern_MakeDataFromSVec(vecsToSend[i]);
+				const char* buff = message.c_str();
+				send(mySocket, buff, sizeof(message), 0);
+
+			}
+			vecsToSend.clear();
+		}
 	}
 }
 void extern_CloseClient() {
@@ -383,8 +395,8 @@ void extern_SetupClient() {
 	//t.detach();
 
 
-	thread(&intern_ClientRecvThread).detach();//Thread for accepting new clients
-	thread(&intern_ClientSendThread).detach();//Thread for accepting new clients
+	thread(&intern_ClientRx).detach();//Thread for accepting new clients
+	thread(&intern_ClientTx).detach();//Thread for accepting new clients
 
 	logsList.push_back(logs::ClientStarted);
 
