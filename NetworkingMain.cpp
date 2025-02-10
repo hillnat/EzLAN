@@ -18,8 +18,8 @@
 #include <thread>
 #include <vector>
 #include "NetworkingMain.h"
-//#define SERVERPORT 7777
-#define SERVERPORT 8080
+#define SERVERPORT 7777
+//#define SERVERPORT 8080
 using namespace std;
 enum axes {id, x, y, z };
 enum netAuthority { Offline, Server, Client };
@@ -28,8 +28,8 @@ __declspec(dllexport) struct sVec3 { int id; float x; float y; float z; };//Data
 struct spawnRequest { int id; };//Datatype for vector including ID
 struct vec3 { float x = 0.F; float y = 0.F; float z = 0.F; };
 
-PCWSTR SERVERIP = L"127.0.0.1";
-//PCWSTR SERVERIP = L"10.15.20.7";
+//PCWSTR SERVERIP = L"127.0.0.1";
+PCWSTR SERVERIP = L"10.15.20.7";
 
 vector<sVec3> vecsToSend;//To send out to other sockets
 vector<sVec3> vecsToProcess;//To be processed in unity
@@ -46,7 +46,7 @@ netAuthority netAuth = netAuthority::Offline;
 
 vector<int> logsList;
 
-/*extern "C" {
+extern "C" {
 	__declspec(dllexport) void __stdcall extern_SetupServer();
 	__declspec(dllexport) void __stdcall extern_CloseServer();
 	__declspec(dllexport) void __stdcall extern_SetupClient();
@@ -60,7 +60,7 @@ vector<int> logsList;
 	__declspec(dllexport) void __stdcall extern_AddVecToSend(int id, float x, float y, float z);
 	__declspec(dllexport) int __stdcall extern_HasVecToProcess();
 
-}*/
+}
 
 
 
@@ -408,7 +408,7 @@ void extern_SetupClient() {
 #pragma endregion
 
 
-
+/*
 int main() {
 	cout << "Server or Client? (s/c) ";
 	char input;
@@ -438,4 +438,4 @@ int main() {
 
 		cout << "-----------------------------------------------------------------" << endl;
 	}
-}
+}*/

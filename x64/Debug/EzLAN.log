@@ -21,4 +21,4 @@ C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(220,9): message : see referenc
           [
               _Fn=void (__cdecl *)(int)
           ]
-  EzLAN.vcxproj -> C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.exe
+  EzLAN.vcxproj -> C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.dll

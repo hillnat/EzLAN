@@ -1,1 +1,1 @@
-C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.exe
+C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.dll
