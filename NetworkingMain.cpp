@@ -18,7 +18,8 @@
 #include <thread>
 #include <vector>
 #include "NetworkingMain.h"
-#define SERVERPORT 7777
+//#define SERVERPORT 7777
+#define SERVERPORT 8080
 using namespace std;
 enum axes {id, x, y, z };
 enum netAuthority { Offline, Server, Client };
@@ -27,7 +28,8 @@ __declspec(dllexport) struct sVec3 { int id; float x; float y; float z; };//Data
 struct spawnRequest { int id; };//Datatype for vector including ID
 struct vec3 { float x = 0.F; float y = 0.F; float z = 0.F; };
 
-PCWSTR SERVERIP = L"10.15.20.7";
+PCWSTR SERVERIP = L"127.0.0.1";
+//PCWSTR SERVERIP = L"10.15.20.7";
 
 vector<sVec3> vecsToSend;//To send out to other sockets
 vector<sVec3> vecsToProcess;//To be processed in unity
@@ -44,7 +46,7 @@ netAuthority netAuth = netAuthority::Offline;
 
 vector<int> logsList;
 
-extern "C" {
+/*extern "C" {
 	__declspec(dllexport) void __stdcall extern_SetupServer();
 	__declspec(dllexport) void __stdcall extern_CloseServer();
 	__declspec(dllexport) void __stdcall extern_SetupClient();
@@ -58,7 +60,9 @@ extern "C" {
 	__declspec(dllexport) void __stdcall extern_AddVecToSend(int id, float x, float y, float z);
 	__declspec(dllexport) int __stdcall extern_HasVecToProcess();
 
-}
+}*/
+
+
 
 
 int extern_GetNetAuthority() { return (int)netAuth; }
@@ -70,10 +74,10 @@ int extern_GetNextLog() {
 }
 int extern_HasLog() {
 	if (logsList.size() > 0) {
-		return 0;
+		return 1;
 	}
 	else {
-		return 1;
+		return 0;
 	}
 }
 int extern_GetId() {
@@ -92,7 +96,8 @@ void intern_CloseClientArray() {
 
 void extern_AddVecToSend(int id, float x, float y, float z) { vecsToSend.push_back(sVec3{ id,x,y,z }); }
 sVec3 extern_GetNextVecToProcess() {
-	sVec3 s{ vecsToProcess[0].id, vecsToProcess[0].x, vecsToProcess[0].y, vecsToProcess[0].z};
+	if (vecsToProcess.size() == 0) { return sVec3{ -99,-99,-99,-99 }; }
+	const sVec3 s{ vecsToProcess[0].id, vecsToProcess[0].x, vecsToProcess[0].y, vecsToProcess[0].z};
 	vecsToProcess.erase(vecsToProcess.begin());
 	return s;
 }
@@ -156,7 +161,8 @@ sVec3 intern_MakeSVecFromData(const string data) {
 }
 string intern_MakeDataFromSVec(sVec3 vec) {
 	string message = "i";
-	message += vec.id;
+	message += std::to_string(vec.id);
+	message += "?";//END OF ID
 	message += "x";
 	message += std::to_string(vec.x);
 	message += "?";//END OF NUM
@@ -196,7 +202,6 @@ void intern_ServerRx(const int clientIndex) {
 		}
 	}
 }
-
 void intern_ServerWaitNewClients() {//Continously wait for new connections
 	while (true) {
 		int clientAddrLen = sizeof(clientAddr);
@@ -231,7 +236,6 @@ void intern_ServerTx() {
 		vecsToSend.clear();
 	}
 }
-
 void extern_CloseServer() {
 	if (netAuth != netAuthority::Server) {
 		return;
@@ -402,3 +406,36 @@ void extern_SetupClient() {
 
 }
 #pragma endregion
+
+
+
+int main() {
+	cout << "Server or Client? (s/c) ";
+	char input;
+	cin >> input;
+	switch (input) {
+	case 's':
+		extern_SetupServer();
+		break;
+	case 'c':
+		extern_SetupClient();
+		break;
+	default:
+		break;
+	}
+
+	while (true) {
+		//std::cout << "\033[2J\033[1;1H"; // Clear screen and reset cursor position
+
+		if (!(netAuth == netAuthority::Server || netAuth == netAuthority::Client)) {continue;}
+		sVec3 vector = extern_GetNextVecToProcess();
+		cout << "My ID is " << myId << endl;
+		cout << "Got : ID "<<vector.id<<" X " << vector.x << " Y " << vector.y << " Z " << vector.z<<endl;
+		while (extern_HasLog() != 0) {
+			cout << "Logs " << extern_GetNextLog() << endl;
+		}
+		extern_AddVecToSend(myId, 5.f, 6.f, 7.f);
+
+		cout << "-----------------------------------------------------------------" << endl;
+	}
+}
