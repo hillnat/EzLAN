@@ -21,12 +21,10 @@
 #define SERVERPORT 7777
 //#define SERVERPORT 8080
 using namespace std;
-enum axes {id, x, y, z };
+enum sVecAxes {id, px, py, pz,ry };
 enum netAuthority { Offline, Server, Client };
 enum logs { ServerStarted, ServerEnded, ClientConnected,ClientStarted,ClientEnded,IdSet,FATAL,FATAL0,FATAL1,FATAL2,FATAL3,FATAL4,FATAL5,FATAL6,FATAL7 };
-__declspec(dllexport) struct sVec3 { int id; float x; float y; float z; };//Datatype for vector including ID
-struct spawnRequest { int id; };//Datatype for vector including ID
-struct vec3 { float x = 0.F; float y = 0.F; float z = 0.F; };
+__declspec(dllexport) struct sVec3 { int id=0; float px=0; float py=0; float pz=0; float ry=0; };//Datatype for vector including ID
 
 //PCWSTR SERVERIP = L"127.0.0.1";
 PCWSTR SERVERIP = L"10.15.20.7";
@@ -57,7 +55,7 @@ extern "C" {
 	__declspec(dllexport) int __stdcall extern_GetNextLog();
 	__declspec(dllexport) int __stdcall extern_GetId();
 	__declspec(dllexport) sVec3 __stdcall extern_GetNextVecToProcess();
-	__declspec(dllexport) void __stdcall extern_AddVecToSend(int id, float x, float y, float z);
+	__declspec(dllexport) void __stdcall extern_AddVecToSend(int id, float px, float py, float pz, float ry);
 	__declspec(dllexport) int __stdcall extern_HasVecToProcess();
 
 }
@@ -85,7 +83,7 @@ int extern_GetId() {
 }
 
 void intern_CloseClientArray() {
-	if (netAuth != netAuthority::Server) {
+	if (netAuth != netAuthority::Server||clientArray.size()==0) {
 		return;
 	}
 	for (int i = 0; i < clientArray.size(); i++) {
@@ -94,55 +92,65 @@ void intern_CloseClientArray() {
 	clientArray.clear();
 }
 
-void extern_AddVecToSend(int id, float x, float y, float z) { vecsToSend.push_back(sVec3{ id,x,y,z }); }
+void extern_AddVecToSend(int id, float px, float py, float pz, float ry) { vecsToSend.push_back(sVec3{id,px,py,pz,ry }); }
 sVec3 extern_GetNextVecToProcess() {
-	if (vecsToProcess.size() == 0) { return sVec3{ -99,-99,-99,-99 }; }
-	const sVec3 s{ vecsToProcess[0].id, vecsToProcess[0].x, vecsToProcess[0].y, vecsToProcess[0].z};
+	if (vecsToProcess.size() == 0) { return sVec3{ -99,0,0,0,0}; }
+	const sVec3 s{ vecsToProcess[0].id, vecsToProcess[0].px, vecsToProcess[0].py, vecsToProcess[0].pz,vecsToProcess[0].ry};
 	vecsToProcess.erase(vecsToProcess.begin());
 	return s;
 }
-int extern_HasVecToProcess() { return vecsToProcess.size(); }
+int extern_HasVecToProcess() { return (int)vecsToProcess.size(); }
 
 #pragma region Data Processing
 sVec3 intern_MakeSVecFromData(const string data) {
-	sVec3 output = sVec3{ 0, 0.f,0.f,0.f };
+	//For parsing x y and z chars represent poisiton xyz (px,py,pr)
+	//HJK represent rotation of the vector (rx,ry,rz)
+	//This is done to keep the identifier as a single char
+	sVec3 output = sVec3{ 0, 0.f,0.f,0.f,0.f };
 	string curNum = "";
-	axes axis = (axes)0;
+	sVecAxes axis = (sVecAxes)0;
 	bool done = false;
 	for (int i = 0; i < data.length(); i++) {
 		if (done) { break; }
 		switch ((char)(data[i]))
 		{
 		case 'i':
-			axis = axes::id;
+			axis = sVecAxes::id;
 			curNum = "";
 			break;
 		case 'x':
-			axis = axes::x;
+			axis = sVecAxes::px;
 			curNum = "";
 			break;
 		case 'y':
-			axis = axes::y;
+			axis = sVecAxes::py;
 			curNum = "";
 			break;
 		case 'z':
-			axis = axes::z;
+			axis = sVecAxes::pz;
 			curNum = "";
 			break;
-		case '?'://End of number. When we reach this, apply the number weve constructed to our vec3
+		case 'j':
+			axis = sVecAxes::ry;
+			curNum = "";
+			break;
+		case '?'://End of number. When we reach this, apply the numbers weve gathered since last switching axis
 			switch (axis)
 			{
-			case(axes::x):
-				output.x = stof(curNum);
-				break;
-			case(axes::y):
-				output.y = stof(curNum);
-				break;
-			case(axes::z):
-				output.z = stof(curNum);
-				break;
-			case(axes::id):
+			case(sVecAxes::id):
 				output.id = stoi(curNum);
+				break;
+			case(sVecAxes::px):
+				output.px = stof(curNum);
+				break;
+			case(sVecAxes::py):
+				output.py = stof(curNum);
+				break;
+			case(sVecAxes::pz):
+				output.pz = stof(curNum);
+				break;	
+			case(sVecAxes::ry):
+				output.ry = stof(curNum);
 				break;
 			};
 			break;
@@ -160,20 +168,24 @@ sVec3 intern_MakeSVecFromData(const string data) {
 	return output;
 }
 string intern_MakeDataFromSVec(sVec3 vec) {
-	string message = "i";
+	string message="i";
 	message += std::to_string(vec.id);
 	message += "?";//END OF ID
+	//Pos
 	message += "x";
-	message += std::to_string(vec.x);
+	message += std::to_string(vec.px);
 	message += "?";//END OF NUM
-
 	message += "y";
-	message += std::to_string(vec.y);
+	message += std::to_string(vec.py);
+	message += "?";//END OF NUM
+	message += "z";
+	message += std::to_string(vec.pz);
+	message += "?";//END OF NUM
+	//Rot
+	message += "j";
+	message += std::to_string(vec.ry);
 	message += "?";//END OF NUM
 
-	message += "z";
-	message += std::to_string(vec.z);
-	message += "?";//END OF NUM
 
 	message += ";";//END MESSAGE
 	return message;
@@ -186,7 +198,7 @@ void intern_ServerRx(const int clientIndex) {
 	//Wait for incoming data to process
 	while (true) {
 		if (clientArray.size() <= clientIndex) { return; }
-		char recvBuffer[1024];
+		char recvBuffer[128];
 		int bytesRead = recv(clientArray[clientIndex], recvBuffer, sizeof(recvBuffer), 0);
 		if (bytesRead > 0) {
 			//recvBuffer[bytesRead] = '\0';
@@ -301,7 +313,7 @@ void extern_SetupServer() {
 void intern_ClientRx() {
 	while (true) {
 		//Wait for incoming data to process
-		char recvBuffer[1024];
+		char recvBuffer[128];
 		int bytesRead = recv(mySocket, recvBuffer, sizeof(recvBuffer), 0);
 		if (bytesRead > 0) {
 			//recvBuffer[bytesRead] = '\0';
@@ -312,19 +324,17 @@ void intern_ClientRx() {
 }
 void intern_ClientTx() {
 	while (true) {
-		while (true) {
-			//Send out all synced vectors
-			if (vecsToSend.size() == 0) {
-				continue;
-			}
-			for (int i = 0; i < vecsToSend.size(); i++) {
-				string message = intern_MakeDataFromSVec(vecsToSend[i]);
-				const char* buff = message.c_str();
-				send(mySocket, buff, sizeof(message), 0);
-
-			}
-			vecsToSend.clear();
+		//Send out all synced vectors
+		if (vecsToSend.size() == 0) {
+			continue;
 		}
+		for (int i = 0; i < vecsToSend.size(); i++) {
+			string message = intern_MakeDataFromSVec(vecsToSend[i]);
+			const char* buff = message.c_str();
+			send(mySocket, buff, sizeof(message), 0);
+
+		}
+		vecsToSend.clear();
 	}
 }
 void extern_CloseClient() {
