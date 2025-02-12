@@ -18,6 +18,7 @@
 #include <thread>
 #include <vector>
 #include "NetworkingMain.h"
+#define RECVBUFF 1024
 #define SERVERPORT 7777
 //#define SERVERPORT 8080
 using namespace std;
@@ -27,7 +28,8 @@ enum logs { ServerStarted, ServerEnded, ClientConnected,ClientStarted,ClientEnde
 __declspec(dllexport) struct sVec3 { int id=0; float px=0; float py=0; float pz=0; float ry=0; };//Datatype for vector including ID
 
 //PCWSTR SERVERIP = L"127.0.0.1";
-PCWSTR SERVERIP = L"10.15.20.7";
+PCWSTR SERVERIP = L"10.15.20.14";//Joels pc
+//PCWSTR SERVERIP = L"10.15.20.7";
 
 vector<sVec3> vecsToSend;//To send out to other sockets
 vector<sVec3> vecsToProcess;//To be processed in unity
@@ -57,12 +59,28 @@ extern "C" {
 	__declspec(dllexport) sVec3 __stdcall extern_GetNextVecToProcess();
 	__declspec(dllexport) void __stdcall extern_AddVecToSend(int id, float px, float py, float pz, float ry);
 	__declspec(dllexport) int __stdcall extern_HasVecToProcess();
+	__declspec(dllexport) int __stdcall extern_SetIP(const char* ip);
 
 }
 
+PCWSTR intern_CharToPCWSTR(const char* str) {
+	// Get the required size of the wide-character string buffer
+	int size_needed = MultiByteToWideChar(CP_UTF8, 0, str, -1, nullptr, 0);
 
+	// Allocate buffer for wide-character string
+	wchar_t* wstr = new wchar_t[size_needed];
 
+	// Convert the char* (multi-byte) string to wchar_t* (wide-character string)
+	MultiByteToWideChar(CP_UTF8, 0, str, -1, wstr, size_needed);
 
+	// Return the wide string as a PCWSTR (const wchar_t*)
+	return wstr;
+}
+
+int extern_SetIP(const char* ip) {
+	SERVERIP = intern_CharToPCWSTR(ip);
+	return 1; 
+}
 int extern_GetNetAuthority() { return (int)netAuth; }
 int extern_GetClientCount() { return (int)clientArray.size(); }
 int extern_GetNextLog() {
@@ -198,7 +216,7 @@ void intern_ServerRx(const int clientIndex) {
 	//Wait for incoming data to process
 	while (true) {
 		if (clientArray.size() <= clientIndex) { return; }
-		char recvBuffer[128];
+		char recvBuffer[RECVBUFF];
 		int bytesRead = recv(clientArray[clientIndex], recvBuffer, sizeof(recvBuffer), 0);
 		if (bytesRead > 0) {
 			//recvBuffer[bytesRead] = '\0';
@@ -313,7 +331,7 @@ void extern_SetupServer() {
 void intern_ClientRx() {
 	while (true) {
 		//Wait for incoming data to process
-		char recvBuffer[128];
+		char recvBuffer[RECVBUFF];
 		int bytesRead = recv(mySocket, recvBuffer, sizeof(recvBuffer), 0);
 		if (bytesRead > 0) {
 			//recvBuffer[bytesRead] = '\0';
@@ -371,9 +389,6 @@ void extern_SetupClient() {
 	serverAddr.sin_addr.s_addr = INADDR_ANY;
 	serverAddr.sin_port = htons(SERVERPORT);
 
-
-	//serverAddr.sin_family = AF_INET;
-	//serverAddr.sin_port = htons(SERVERPORT);
 
 	//Convert IP address to wide string and use InetPtonW
 	if (InetPtonW(AF_INET, SERVERIP, &serverAddr.sin_addr) != 1) {
