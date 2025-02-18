@@ -1,11 +1,12 @@
 #pragma once
+// _CRT_SECURE_NO_WARNINGS //Make sure this is in C/C++ PreProccessor definitions
+
 #include "pch.h"
-#define _CRT_SECURE_NO_WARNINGS //Allow old time functions
-#ifdef BUILD_DLL
+/*#ifdef BUILD_DLL
 #define DLL_EXPORT __declspec(dllexport)
 #else
 #define DLL_EXPORT __declspec(dllimport)
-#endif
+#endif*/
 #include <iostream>
 #include <fstream> //File stream
 #include <sstream> //String stream for reading entire files
@@ -16,37 +17,38 @@
 #include <ws2tcpip.h> //Contains additional functions for TCP/IP networking, for InetPtonW and other functions
 #pragma comment(lib, "ws2_32.lib") //Links against the Winsock library
 #include <thread>
-#include <vector>
 #include "NetworkingMain.h"
 #define RECVBUFF 1024
 #define SERVERPORT 7777
+
 //#define SERVERPORT 8080
 using namespace std;
-enum sVecAxes {id, px, py, pz,ry };
+enum sVecAxes {id, px, py, pz,ry };//Type for our synced vector that is being sent over the network containing an ID, x,y,z position values, as well as Y euler rotation
 enum netAuthority { Offline, Server, Client };
-enum logs { ServerStarted, ServerEnded, ClientConnected,ClientStarted,ClientEnded,IdSet,FATAL,FATAL0,FATAL1,FATAL2,FATAL3,FATAL4,FATAL5,FATAL6,FATAL7 };
-__declspec(dllexport) struct sVec3 { int id=0; float px=0; float py=0; float pz=0; float ry=0; };//Datatype for vector including ID
+enum logs { ServerStarted, ServerEnded, ClientConnected,ClientStarted,ClientEnded,IdSet,FATAL,FATAL0,FATAL1,FATAL2,FATAL3,FATAL4,FATAL5,FATAL6,FATAL7,OUTOFLOGS };
+__declspec(dllexport) struct sVec3 { int id=0; float px=0; float py=0; float pz=0; float ry=0; };//Declare enum type to DLL
 
 //PCWSTR SERVERIP = L"127.0.0.1";
-PCWSTR SERVERIP = L"10.15.20.14";//Joels pc
-//PCWSTR SERVERIP = L"10.15.20.7";
+//PCWSTR SERVERIP = L"10.15.20.14";//Joels pc
+PCWSTR serverIp = L"10.15.20.7";
 
 vector<sVec3> vecsToSend;//To send out to other sockets
 vector<sVec3> vecsToProcess;//To be processed in unity
 
-vector<SOCKET> clientArray;
+vector<SOCKET> clientArray;//Array of all clients connected to server socket. Only for computer acting as server
 WSADATA wsaData;
 SOCKET mySocket;
 sockaddr_in clientAddr;
 sockaddr_in serverAddr;
-int myId = -1;
+int myId = -1;//My ID is -1 until the DLL has finished network setup for appropriate network authroity
 thread waitForClientsThread;
 
-netAuthority netAuth = netAuthority::Offline;
+netAuthority netAuth = netAuthority::Offline;//Our computers authrotity over the network
 
-vector<int> logsList;
-
+vector<int> logsList;//List of logs recieved from DLL
+//Function export declarations for DLL file
 extern "C" {
+
 	__declspec(dllexport) void __stdcall extern_SetupServer();
 	__declspec(dllexport) void __stdcall extern_CloseServer();
 	__declspec(dllexport) void __stdcall extern_SetupClient();
@@ -59,35 +61,60 @@ extern "C" {
 	__declspec(dllexport) sVec3 __stdcall extern_GetNextVecToProcess();
 	__declspec(dllexport) void __stdcall extern_AddVecToSend(int id, float px, float py, float pz, float ry);
 	__declspec(dllexport) int __stdcall extern_HasVecToProcess();
-	__declspec(dllexport) int __stdcall extern_SetIP(const char* ip);
+	__declspec(dllexport) int __stdcall extern_SetIp(char* ip);
+	__declspec(dllexport) uint32_t __stdcall extern_GetIp(char* outBuff, uint32_t inSize);
+
 
 }
+uint32_t extern_GetIp(char* outBuff, uint32_t inSize) {
+	//This setup users IntPtr types to allow the c# script to allocate the memory buffer, then we can populate it and send it back.
+	char szReturnString[500];
+	wcstombs(szReturnString, serverIp, 500);//Shittiest method name of all time
+	const uint32_t uiStringLength = strlen(szReturnString);
 
+	if (inSize >= (uiStringLength + 1))
+	{
+		strcpy(outBuff, szReturnString);
+		// Return the number of characters copied.
+		return uiStringLength;
+	}
+	else
+	{
+		// Return the required size
+		// (including the terminating NULL character).
+		return uiStringLength + 1;
+	}
+}
 PCWSTR intern_CharToPCWSTR(const char* str) {
 	// Get the required size of the wide-character string buffer
 	int size_needed = MultiByteToWideChar(CP_UTF8, 0, str, -1, nullptr, 0);
 
 	// Allocate buffer for wide-character string
-	wchar_t* wstr = new wchar_t[size_needed];
+	wchar_t* wstr = new wchar_t[size_needed];//Probably a memory leak
 
 	// Convert the char* (multi-byte) string to wchar_t* (wide-character string)
 	MultiByteToWideChar(CP_UTF8, 0, str, -1, wstr, size_needed);
 
 	// Return the wide string as a PCWSTR (const wchar_t*)
-	return wstr;
+	return (PCWSTR)wstr;//Convert normal wide string to pointer to constant wide string
 }
 
-int extern_SetIP(const char* ip) {
-	SERVERIP = intern_CharToPCWSTR(ip);
+int extern_SetIp(char* ip) {
+	serverIp = intern_CharToPCWSTR(ip);
 	return 1; 
 }
 int extern_GetNetAuthority() { return (int)netAuth; }
 int extern_GetClientCount() { return (int)clientArray.size(); }
+//Returns next log to c# script
 int extern_GetNextLog() {
+	if (logsList.size() == 0) {
+		return OUTOFLOGS;
+	}
 	int c = logsList[0];
 	logsList.erase(logsList.begin());
 	return c;
 }
+//Returns 1 if we hajve a log
 int extern_HasLog() {
 	if (logsList.size() > 0) {
 		return 1;
@@ -96,6 +123,7 @@ int extern_HasLog() {
 		return 0;
 	}
 }
+
 int extern_GetId() {
 	return myId;
 }
@@ -270,12 +298,14 @@ void extern_CloseServer() {
 	if (netAuth != netAuthority::Server) {
 		return;
 	}
-	closesocket(mySocket);
 	intern_CloseClientArray();
+	closesocket(mySocket);
+	
 	WSACleanup();
 	netAuth = netAuthority::Offline;
 	logsList.push_back(logs::ClientStarted);
 }
+
 void extern_SetupServer() {
 
 	if (netAuth != netAuthority::Offline) {
@@ -391,7 +421,7 @@ void extern_SetupClient() {
 
 
 	//Convert IP address to wide string and use InetPtonW
-	if (InetPtonW(AF_INET, SERVERIP, &serverAddr.sin_addr) != 1) {
+	if (InetPtonW(AF_INET, serverIp, &serverAddr.sin_addr) != 1) {
 		closesocket(mySocket);
 		WSACleanup();
 		logsList.push_back(logs::FATAL2);
@@ -432,35 +462,3 @@ void extern_SetupClient() {
 }
 #pragma endregion
 
-
-/*
-int main() {
-	cout << "Server or Client? (s/c) ";
-	char input;
-	cin >> input;
-	switch (input) {
-	case 's':
-		extern_SetupServer();
-		break;
-	case 'c':
-		extern_SetupClient();
-		break;
-	default:
-		break;
-	}
-
-	while (true) {
-		//std::cout << "\033[2J\033[1;1H"; // Clear screen and reset cursor position
-
-		if (!(netAuth == netAuthority::Server || netAuth == netAuthority::Client)) {continue;}
-		sVec3 vector = extern_GetNextVecToProcess();
-		cout << "My ID is " << myId << endl;
-		cout << "Got : ID "<<vector.id<<" X " << vector.x << " Y " << vector.y << " Z " << vector.z<<endl;
-		while (extern_HasLog() != 0) {
-			cout << "Logs " << extern_GetNextLog() << endl;
-		}
-		extern_AddVecToSend(myId, 5.f, 6.f, 7.f);
-
-		cout << "-----------------------------------------------------------------" << endl;
-	}
-}*/
