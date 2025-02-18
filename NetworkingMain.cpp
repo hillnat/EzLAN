@@ -21,31 +21,26 @@
 #define RECVBUFF 1024
 #define SERVERPORT 7777
 
-//#define SERVERPORT 8080
 using namespace std;
-enum sVecAxes {id, px, py, pz,ry };//Type for our synced vector that is being sent over the network containing an ID, x,y,z position values, as well as Y euler rotation
+enum sVecAxes {id, px, py, pz,ry };//Type for the various axis of our synced vector that is being sent over the network containing an ID, x,y,z position values, as well as Y euler rotation
 enum netAuthority { Offline, Server, Client };
 enum logs { ServerStarted, ServerEnded, ClientConnected,ClientStarted,ClientEnded,IdSet,FATAL,FATAL0,FATAL1,FATAL2,FATAL3,FATAL4,FATAL5,FATAL6,FATAL7,OUTOFLOGS };
-__declspec(dllexport) struct sVec3 { int id=0; float px=0; float py=0; float pz=0; float ry=0; };//Declare enum type to DLL
+__declspec(dllexport) struct sVec3 { int id=0; float px=0; float py=0; float pz=0; float ry=0; };//Declare our synced data type to the DLL
 
-//PCWSTR SERVERIP = L"127.0.0.1";
-//PCWSTR SERVERIP = L"10.15.20.14";//Joels pc
-PCWSTR serverIp = L"10.15.20.7";
+PCWSTR serverIp = L"127.0.0.1";
 
 vector<sVec3> vecsToSend;//To send out to other sockets
 vector<sVec3> vecsToProcess;//To be processed in unity
-
 vector<SOCKET> clientArray;//Array of all clients connected to server socket. Only for computer acting as server
-WSADATA wsaData;
-SOCKET mySocket;
+WSADATA wsaData;//Required for socket use
+SOCKET mySocket;//Reference to our socket
 sockaddr_in clientAddr;
 sockaddr_in serverAddr;
 int myId = -1;//My ID is -1 until the DLL has finished network setup for appropriate network authroity
 thread waitForClientsThread;
-
 netAuthority netAuth = netAuthority::Offline;//Our computers authrotity over the network
-
 vector<int> logsList;//List of logs recieved from DLL
+
 //Function export declarations for DLL file
 extern "C" {
 
@@ -105,6 +100,28 @@ int extern_SetIp(char* ip) {
 }
 int extern_GetNetAuthority() { return (int)netAuth; }
 int extern_GetClientCount() { return (int)clientArray.size(); }
+
+int extern_GetId() {
+	return myId;
+}
+void intern_CloseClientArray() {
+	if (netAuth != netAuthority::Server||clientArray.size()==0) {
+		return;
+	}
+	for (int i = 0; i < clientArray.size(); i++) {
+		closesocket(clientArray[i]);
+	}
+	clientArray.clear();
+}
+void extern_AddVecToSend(int id, float px, float py, float pz, float ry) { vecsToSend.push_back(sVec3{id,px,py,pz,ry }); }
+sVec3 extern_GetNextVecToProcess() {
+	if (vecsToProcess.size() == 0) { return sVec3{ -99,0,0,0,0}; }
+	const sVec3 s{ vecsToProcess[0].id, vecsToProcess[0].px, vecsToProcess[0].py, vecsToProcess[0].pz,vecsToProcess[0].ry};
+	vecsToProcess.erase(vecsToProcess.begin());
+	return s;
+}
+int extern_HasVecToProcess() { return (int)vecsToProcess.size(); }
+#pragma region Logging
 //Returns next log to c# script
 int extern_GetNextLog() {
 	if (logsList.size() == 0) {
@@ -123,30 +140,7 @@ int extern_HasLog() {
 		return 0;
 	}
 }
-
-int extern_GetId() {
-	return myId;
-}
-
-void intern_CloseClientArray() {
-	if (netAuth != netAuthority::Server||clientArray.size()==0) {
-		return;
-	}
-	for (int i = 0; i < clientArray.size(); i++) {
-		closesocket(clientArray[i]);
-	}
-	clientArray.clear();
-}
-
-void extern_AddVecToSend(int id, float px, float py, float pz, float ry) { vecsToSend.push_back(sVec3{id,px,py,pz,ry }); }
-sVec3 extern_GetNextVecToProcess() {
-	if (vecsToProcess.size() == 0) { return sVec3{ -99,0,0,0,0}; }
-	const sVec3 s{ vecsToProcess[0].id, vecsToProcess[0].px, vecsToProcess[0].py, vecsToProcess[0].pz,vecsToProcess[0].ry};
-	vecsToProcess.erase(vecsToProcess.begin());
-	return s;
-}
-int extern_HasVecToProcess() { return (int)vecsToProcess.size(); }
-
+#pragma endregion
 #pragma region Data Processing
 sVec3 intern_MakeSVecFromData(const string data) {
 	//For parsing x y and z chars represent poisiton xyz (px,py,pr)
