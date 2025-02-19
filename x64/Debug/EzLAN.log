@@ -1,7 +1,7 @@
 ﻿  NetworkingMain.cpp
-C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(29,97): warning C4091: '__declspec(dllexport)': ignored on left of 'sVec3' when no variable is declared
-C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(73,56): warning C4267: 'initializing': conversion from 'size_t' to 'uint32_t', possible loss of data
-C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(73,56): warning C4267: 'initializing': conversion from 'size_t' to 'const uint32_t', possible loss of data
+C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(28,97): warning C4091: '__declspec(dllexport)': ignored on left of 'sVec3' when no variable is declared
+C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(67,56): warning C4267: 'initializing': conversion from 'size_t' to 'uint32_t', possible loss of data
+C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(67,56): warning C4267: 'initializing': conversion from 'size_t' to 'const uint32_t', possible loss of data
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.34.31933\include\type_traits(1572,67): warning C4244: 'argument': conversion from 'unsigned __int64' to 'int', possible loss of data
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.34.31933\include\thread(51,5): message : see reference to function template instantiation 'void std::invoke<void(__cdecl *)(int),unsigned __int64,>(_Callable &&,_Ty1 &&) noexcept(false)' being compiled
           with
@@ -17,10 +17,9 @@ C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.34.3193
               _Ty=unsigned __int64,
               _Fn=void (__cdecl *)(int)
           ]
-C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(278,9): message : see reference to function template instantiation 'std::thread::thread<void(__cdecl *)(int),unsigned __int64,0>(_Fn &&,unsigned __int64 &&)' being compiled
+C:\Users\s239074\Desktop\EzLAN\NetworkingMain.cpp(271,9): message : see reference to function template instantiation 'std::thread::thread<void(__cdecl *)(int),unsigned __int64,0>(_Fn &&,unsigned __int64 &&)' being compiled
           with
           [
               _Fn=void (__cdecl *)(int)
           ]
-     Creating library C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.lib and object C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.exp
   EzLAN.vcxproj -> C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.dll

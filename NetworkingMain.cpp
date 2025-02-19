@@ -34,7 +34,6 @@ vector<sVec3> vecsToProcess;//To be processed in unity
 vector<SOCKET> clientArray;//Array of all clients connected to server socket. Only for computer acting as server
 WSADATA wsaData;//Required for socket use
 SOCKET mySocket;//Reference to our socket
-sockaddr_in clientAddr;
 sockaddr_in serverAddr;
 int myId = -1;//My ID is -1 until the DLL has finished network setup for appropriate network authroity
 thread waitForClientsThread;
@@ -80,7 +79,7 @@ uint32_t extern_GetIp(char* outBuff, uint32_t inSize) {
 		return uiStringLength + 1;
 	}
 }
-PCWSTR intern_CharToPCWSTR(const char* str) {
+wchar_t* intern_CharToPCWSTR(const char* str) {
 	// Get the required size of the wide-character string buffer
 	int size_needed = MultiByteToWideChar(CP_UTF8, 0, str, -1, nullptr, 0);
 
@@ -91,7 +90,7 @@ PCWSTR intern_CharToPCWSTR(const char* str) {
 	MultiByteToWideChar(CP_UTF8, 0, str, -1, wstr, size_needed);
 
 	// Return the wide string as a PCWSTR (const wchar_t*)
-	return (PCWSTR)wstr;//Convert normal wide string to pointer to constant wide string
+	return wstr;//Convert normal wide string to pointer to constant wide string
 }
 
 int extern_SetIp(char* ip) {
@@ -256,8 +255,8 @@ void intern_ServerRx(const int clientIndex) {
 }
 void intern_ServerWaitNewClients() {//Continously wait for new connections
 	while (true) {
-		int clientAddrLen = sizeof(clientAddr);
-		SOCKET newSocket = accept(mySocket, (sockaddr*)&clientAddr, &clientAddrLen);
+		int clientAddrLen = sizeof(serverAddr);
+		SOCKET newSocket = accept(mySocket, (sockaddr*)&serverAddr, &clientAddrLen);
 		if (newSocket == INVALID_SOCKET) {
 			//return 1;//Failure
 			continue;
@@ -448,8 +447,8 @@ void extern_SetupClient() {
 	//t.detach();
 
 
-	thread(&intern_ClientRx).detach();//Thread for accepting new clients
-	thread(&intern_ClientTx).detach();//Thread for accepting new clients
+	thread(&intern_ClientRx).detach();//Thread for recieving
+	thread(&intern_ClientTx).detach();//Thread for transmitting
 
 	logsList.push_back(logs::ClientStarted);
 
