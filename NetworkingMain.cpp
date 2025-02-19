@@ -27,7 +27,7 @@ enum netAuthority { Offline, Server, Client };
 enum logs { ServerStarted, ServerEnded, ClientConnected,ClientStarted,ClientEnded,IdSet,FATAL,FATAL0,FATAL1,FATAL2,FATAL3,FATAL4,FATAL5,FATAL6,FATAL7,OUTOFLOGS };
 __declspec(dllexport) struct sVec3 { int id=0; float px=0; float py=0; float pz=0; float ry=0; };//Declare our synced data type to the DLL
 
-PCWSTR serverIp = L"127.0.0.1";
+PCWSTR serverIp = L"10.15.20.7";
 
 vector<sVec3> vecsToSend;//To send out to other sockets
 vector<sVec3> vecsToProcess;//To be processed in unity
