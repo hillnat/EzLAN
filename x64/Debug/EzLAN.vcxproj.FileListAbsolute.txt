@@ -1,1 +1,2 @@
 C:\Users\s239074\Desktop\EzLAN\x64\Debug\EzLAN.dll
+C:\Users\14253\jungle\Personal\Unity\EzLAN\x64\Debug\EzLAN.dll

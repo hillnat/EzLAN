@@ -1,5 +1,5 @@
 #pragma once
-// _CRT_SECURE_NO_WARNINGS //Make sure this is in C/C++ PreProccessor definitions
+// _CRT_SECURE_NO_WARNINGS //!!Make sure this is in C/C++ PreProccessor definitions!!
 /*#ifdef BUILD_DLL
 #define DLL_EXPORT __declspec(dllexport)
 #else
@@ -12,31 +12,35 @@
 #include <string>
 #include <vector>
 #include <ctime> //For time functions
-#include <winsock2.h> //Provides functions and definitions for network programming using Winsock
-#include <ws2tcpip.h> //Contains additional functions for TCP/IP networking, for InetPtonW and other functions
+#include <winsock2.h> //Provides functions and definitions for Winsock
+#include <ws2tcpip.h> //Contains additional functions for TCP/IP networking
 #pragma comment(lib, "ws2_32.lib") //Links against the Winsock library
 #include <thread>
 #define RECVBUFF 1024 //Base size for packet recieve buffer
 using namespace std;
 
-enum sVecAxes {id, px, py, pz,ry };//Type for the various axis of our synced vector that is being sent over the network containing an ID, x,y,z position values, as well as Y euler rotation
-enum netAuthority { Offline, Server, Client };
-enum logs { ServerStarted, ServerEnded, ClientConnected,ClientStarted,ClientEnded,IdSet,FATAL,FATAL0,FATAL1,FATAL2,FATAL3,FATAL4,FATAL5,FATAL6,FATAL7,OUTOFLOGS };
-__declspec(dllexport) struct sVec3 { int id=0; float px=0; float py=0; float pz=0; float ry=0; };//Inline dll delcaration for our synced data type
+//PREFIX LEGEND:
+//intern_ = only called internally by this C++ DLL
+//extern_ = called externally by C# script
 
-PCWSTR serverIp = L"10.15.20.7";
-int serverPort = 7777;
+enum sVecAxes {id, px, py, pz,ry };//Type for the various axis of our synced vector that is being sent over the network containing an ID, x,y,z position values, as well as Y euler rotation. This type is used for parsing
+enum netAuthority { Offline, Server, Client };//Various network states
+enum logs { ServerStarted, ServerEnded, ClientConnected,ClientStarted,ClientEnded,IdSet,FATAL,FATAL0,FATAL1,FATAL2,FATAL3,FATAL4,FATAL5,FATAL6,FATAL7,OUTOFLOGS };//Enum logs as workaround to difficulty of cross language strings
+__declspec(dllexport) struct sVec3 { int id=0; float px=0; float py=0; float pz=0; float ry=0; };//sVec3 = Synced Vector3. Inline dll and type delcaration for our synced data type. This is the datatype that gets sent over the network and parsed into usable data
 
-vector<sVec3> vecsToSend;//To send out to other sockets
-vector<sVec3> vecsToProcess;//To be processed in unity
+PCWSTR serverIp = L"10.15.20.7";//Current IP to connect to
+int serverPort = 7777;//Current port to connect to
+
+vector<sVec3> vecsToSend;//Synced vectors to send out to other sockets
+vector<sVec3> vecsToProcess;//Synced vectors we have recieved and parsed to be processed in unity.
 vector<SOCKET> clientArray;//Array of all clients connected to server socket. Only for computer acting as server
 WSADATA wsaData;//Required for socket use
 SOCKET mySocket;//Reference to our socket
-sockaddr_in serverAddr;
+sockaddr_in serverAddr;//Address information for our socket
 int myId = -1;//My ID is -1 until the DLL has finished network setup for appropriate network authroity
-thread waitForClientsThread;
+thread waitForClientsThread;//This thread will run on the server machine, it is responsible for spawning serverRx threads to listen to each client that connects
 netAuthority netAuth = netAuthority::Offline;//Our computers authrotity over the network
-vector<int> logsList;//List of logs recieved from DLL
+vector<int> logsList;//List of logs to be read by C# script. Note now that Ive added cross language string functionality, the need for enum logs is less.
 
 //Function export declarations for DLL file
 extern "C" {
@@ -54,9 +58,25 @@ extern "C" {
 	__declspec(dllexport) int __stdcall extern_HasVecToProcess();
 	__declspec(dllexport) int __stdcall extern_SetIp(char* ip);
 	__declspec(dllexport) uint32_t __stdcall extern_GetIp(char* outBuff, uint32_t inSize);
+	__declspec(dllexport) int __stdcall extern_SetPort(int port);
+	__declspec(dllexport) int __stdcall extern_GetPort();
+}
+
+//Helper function Used for setting IP / cross language strings
+wchar_t* intern_CharToPCWSTR(const char* str) {
+	//Get the required size of the wide character string buffer
+	int size_needed = MultiByteToWideChar(CP_UTF8, 0, str, -1, nullptr, 0);
+	//Allocate buffer for wide character string
+	wchar_t* wstr = new wchar_t[size_needed];//Probably a memory leak
+	//Convert the char* (multi-byte) string to wchar_t* (wide-character string)
+	MultiByteToWideChar(CP_UTF8, 0, str, -1, wstr, size_needed);
+	//Return the wide string as a PCWSTR (const wchar_t*)
+	return wstr;//Convert normal wide string to ptr to constant wide string
 }
 uint32_t extern_GetIp(char* outBuff, uint32_t inSize) {
 	//This setup users IntPtr types to allow the c# script to allocate the memory buffer, then we can populate it and send it back.
+	//This is needed to send strings between a managed and unmanaged language.
+	//For now this is only used for getting/setting the IP, this method may be renamed later to be more versatile
 	char szReturnString[500];
 	wcstombs(szReturnString, serverIp, 500);//Shittiest method name of all time
 	const uint32_t uiStringLength = strlen(szReturnString);
@@ -69,31 +89,21 @@ uint32_t extern_GetIp(char* outBuff, uint32_t inSize) {
 	}
 	else
 	{
-		// Return the required size
-		// (including the terminating NULL character).
+		// Return the required size including the null terminator
 		return uiStringLength + 1;
 	}
 }
 int extern_SetIp(char* ip) {
+	//Set IP
 	serverIp = intern_CharToPCWSTR(ip);
 	return 1;
 }
-//Used for setting IP
-wchar_t* intern_CharToPCWSTR(const char* str) {
-	//Get the required size of the wide character string buffer
-	int size_needed = MultiByteToWideChar(CP_UTF8, 0, str, -1, nullptr, 0);
-	//Allocate buffer for wide character string
-	wchar_t* wstr = new wchar_t[size_needed];//Probably a memory leak
-	//Convert the char* (multi-byte) string to wchar_t* (wide-character string)
-	MultiByteToWideChar(CP_UTF8, 0, str, -1, wstr, size_needed);
-	//Return the wide string as a PCWSTR (const wchar_t*)
-	return wstr;//Convert normal wide string to ptr to constant wide string
-}
+int extern_GetPort() { return serverPort; }
+int extern_SetPort(int port){serverPort = port;	return 1;}
+
 int extern_GetNetAuthority() { return (int)netAuth; }
 int extern_GetClientCount() { return (int)clientArray.size(); }
-int extern_GetId() {
-	return myId;
-}
+int extern_GetId() { return myId; }
 
 #pragma region Logging
 //Returns next log to c# script
@@ -105,7 +115,7 @@ int extern_GetNextLog() {
 	logsList.erase(logsList.begin());
 	return c;
 }
-//Returns 1 if we hajve a log
+//Returns 1 if we have a log
 int extern_HasLog() {
 	if (logsList.size() > 0) {
 		return 1;
@@ -216,6 +226,16 @@ string intern_MakeDataFromSVec(sVec3 vec) {
 
 #pragma endregion
 #pragma region Server
+//Close all client sockets
+void intern_CloseClientArray() {
+	if (netAuth != netAuthority::Server || clientArray.size() == 0) {
+		return;
+	}
+	for (int i = 0; i < clientArray.size(); i++) {
+		closesocket(clientArray[i]);
+	}
+	clientArray.clear();
+}
 //Thread running this exists once per client on the server machine
 void intern_ServerRx(const int clientIndex) {
 	//Wait for incoming data to process
@@ -326,22 +346,14 @@ void extern_SetupServer() {
 	//Log("Server started, netAuth set to Server", FOREGROUND_GREEN);
 
 	netAuth = netAuthority::Server;
-	myId = 13;
+	myId = 999;//Id 999 means server
 
 	thread(&intern_ServerWaitNewClients).detach();//Thread for accepting new clients
 	thread(&intern_ServerTx).detach();
 	//thread(&intern_ServerRx).detach(); //One of these gets created by the waitforclient thread, one per client connected
 	logsList.push_back(logs::ServerStarted);
 }
-void intern_CloseClientArray() {
-	if (netAuth != netAuthority::Server || clientArray.size() == 0) {
-		return;
-	}
-	for (int i = 0; i < clientArray.size(); i++) {
-		closesocket(clientArray[i]);
-	}
-	clientArray.clear();
-}
+
 
 #pragma endregion
 #pragma region Client
